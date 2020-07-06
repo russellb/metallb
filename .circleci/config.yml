@@ -36,7 +36,18 @@ jobs:
       - run: mkdir -p ./bin
       - run: wget -O ./bin/manifest-tool https://github.com/estesp/manifest-tool/releases/download/v1.0.0/manifest-tool-linux-amd64 && chmod +x ./bin/manifest-tool
       - run: echo "export GO111MODULE=on" >>$BASH_ENV
-      - run: PATH=./bin:$PATH inv push-multiarch --binaries=controller --tag=${CIRCLE_BRANCH:-${CIRCLE_TAG}} --docker-user=metallb
+      - run: echo ${CIRCLE_PULL_REQUEST}
+      - run: echo ${CIRCLE_BRANCH}
+      - run: echo ${CIRCLE_TAG}
+      # CIRCLE_PULL_REQUEST is a URL in the form: https://github.com/metallb/metallb/pull/1
+      # We use sed to get the pull request ID out of the URL.  CIRCLE_PR_NUMBER would be
+      # more convenient, but unfortunately it is not always available.
+      # https://circleci.com/docs/2.0/env-vars/
+      #
+      # If the job is being run against a PR, use "pr-<ID>" as the image tag and push the
+      # result to metallbdev/controller.  Otherwise we use the branch or tag name as the
+      # image tag and push to the main metallb/ image.
+      - run: if [ -n $CIRCLE_PULL_REQUEST ]; then PATH=./bin:$PATH inv push-multiarch --binaries=controller --tag=pr-$(echo $CIRCLE_PULL_REQUEST | sed -e 's/.*pull\/\(.*\)/\1/') --docker-user=metallbdev ; else PATH=./bin:$PATH inv push-multiarch --binaries=controller --tag=${CIRCLE_BRANCH:-${CIRCLE_TAG}} --docker-user=metallb ; fi
   deploy-speaker:
     working_directory: /go/src/go.universe.tf/metallb
     docker:
@@ -50,7 +61,18 @@ jobs:
       - run: mkdir -p ./bin
       - run: wget -O ./bin/manifest-tool https://github.com/estesp/manifest-tool/releases/download/v1.0.0/manifest-tool-linux-amd64 && chmod +x ./bin/manifest-tool
       - run: echo "export GO111MODULE=on" >>$BASH_ENV
-      - run: PATH=./bin:$PATH inv push-multiarch --binaries=speaker --tag=${CIRCLE_BRANCH:-${CIRCLE_TAG}} --docker-user=metallb
+      - run: echo ${CIRCLE_PULL_REQUEST}
+      - run: echo ${CIRCLE_BRANCH}
+      - run: echo ${CIRCLE_TAG}
+      # CIRCLE_PULL_REQUEST is a URL in the form: https://github.com/metallb/metallb/pull/1
+      # We use sed to get the pull request ID out of the URL.  CIRCLE_PR_NUMBER would be
+      # more convenient, but unfortunately it is not always available.
+      # https://circleci.com/docs/2.0/env-vars/
+      #
+      # If the job is being run against a PR, use "pr-<ID>" as the image tag and push the
+      # result to metallbdev/speaker.  Otherwise we use the branch or tag name as the
+      # image tag and push to the main metallb/ image.
+      - run: if [ -n $CIRCLE_PULL_REQUEST ]; then PATH=./bin:$PATH inv push-multiarch --binaries=controller --tag=pr-$(echo $CIRCLE_PULL_REQUEST | sed -e 's/.*pull\/\(.*\)/\1/') --docker-user=metallbdev ; else PATH=./bin:$PATH inv push-multiarch --binaries=controller --tag=${CIRCLE_BRANCH:-${CIRCLE_TAG}} --docker-user=metallb ; fi
 workflows:
   version: 2
   test-and-deploy:
@@ -64,24 +86,10 @@ workflows:
             tags:
               only: /.*/
       - deploy-controller:
-          filters:
-            branches:
-              only:
-                - main
-                - /v.*/
-            tags:
-              only: /.*/
           requires:
             - test-1.13
             - lint-1.13
       - deploy-speaker:
-          filters:
-            branches:
-              only:
-                - main
-                - /v.*/
-            tags:
-              only: /.*/
           requires:
             - test-1.13
             - lint-1.13
