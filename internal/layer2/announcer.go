@@ -131,6 +131,46 @@ func (a *Announce) updateInterfaces() {
 	return
 }
 
+// Force a proactive announcement of all IP addresses
+//
+// Proactively send another round of gratuitious ARP / NDP messages.  This may be
+// necessary after recovering from a split in cluster membership to ensure that
+// the current intended owner of the IP address is respected by the network.
+func (a *Announce) AnnounceAll() {
+	go a.spamAll()
+}
+
+func (a *Announce) spamAll() {
+	// Take a copy of all IPs we owned at the time it was decided to refresh the
+	// network.  In order to not flood the network with ARP or NDP traffic, we will
+	// limit how many are processed at once.
+	//
+	// This is also means it's quite possible to lose control of one of these IP
+	// addresses while the routine runs.  That's no problem though, as the operation
+	// will turn into a no-op for the IP address in that case, since gratuitous()
+	// validates that the IP is still owned by this Node before sending anything.
+	//
+	// We also know there should be *some* limit enforced on how much ARP/NDP spam
+	// we should send at once.  The limit enforced here is completely arbitrary.
+	// It will only kick off 50 at a time and then wait 5 seconds to kick off the
+	// next batch.  The last batch should finish in about 5 seconds, as well.
+
+	var names []string
+	a.RLock()
+	for name := range a.ips {
+		names = append(names, name)
+	}
+	a.RUnlock()
+
+	for i, name := range names {
+		go a.spam(name)
+		// Pause after doing each 50 to rate limit our spam.
+		if (i+1)%50 == 0 {
+			time.Sleep(5 * time.Second)
+		}
+	}
+}
+
 func (a *Announce) spam(name string) {
 	// TODO: should abort if we lose control of the IP mid-spam.
 	start := time.Now()
